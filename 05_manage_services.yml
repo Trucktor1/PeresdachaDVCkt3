@@ -1,0 +1,34 @@
+---
+- name: 'СЦЕНАРИЙ 5: Управление сервисами'
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: yes
+
+  vars:
+    service_name: nginx
+    service_action: restarted
+
+  tasks:
+    - name: 'Управление сервисом {{ service_name }}'
+      service:
+        name: "{{ service_name }}"
+        state: "{{ service_action }}"
+      register: service_result
+
+    - name: 'Проверка статуса сервиса'
+      command: systemctl is-active {{ service_name }}
+      register: status
+      changed_when: false
+
+    - name: 'Результат выполнения'
+      debug:
+        msg: |
+          ===================================
+          📊 УПРАВЛЕНИЕ СЕРВИСОМ
+          ===================================
+          🔧 Сервис: {{ service_name }}
+          🎯 Действие: {{ service_action }}
+          📝 Статус: {{ status.stdout }}
+          ✅ Сервис успешно перезапущен
+          ===================================

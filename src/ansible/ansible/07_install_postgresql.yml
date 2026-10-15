@@ -1,0 +1,115 @@
+---
+- name: 'СЦЕНАРИЙ 7: Установка и настройка PostgreSQL'
+  hosts: databases
+  become: yes
+
+  vars:
+    postgres_version: 14
+    db_name: myapp_db
+    db_user: app_user
+    db_password: "StrongPassword123!"
+    app_user_password: "AppUserPass456!"
+
+  tasks:
+    # Установка PostgreSQL
+    - name: '7.1 - Добавление официального репозитория PostgreSQL'
+      apt_key:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        state: present
+      tags: [repo]
+
+    - name: '7.2 - Добавление репозитория PostgreSQL {{ postgres_version }}'
+      apt_repository:
+        repo: "deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main"
+        state: present
+      tags: [repo]
+
+    - name: '7.3 - Установка PostgreSQL {{ postgres_version }}'
+      apt:
+        name:
+          - postgresql-{{ postgres_version }}
+          - postgresql-contrib-{{ postgres_version }}
+          - python3-psycopg2
+        update_cache: yes
+        state: present
+      tags: [install]
+
+    # Запуск сервиса
+    - name: '7.4 - Запуск PostgreSQL'
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+      tags: [service]
+
+    # Создание пользователя и БД
+    - name: '7.5 - Создание пользователя приложения'
+      postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        role_attr_flags: LOGIN,CREATEDB
+        state: present
+      become_user: postgres
+      tags: [database]
+
+    - name: '7.6 - Создание базы данных'
+      postgresql_db:
+        name: "{{ db_name }}"
+        owner: "{{ db_user }}"
+        encoding: UTF-8
+        lc_collate: en_US.UTF-8
+        lc_ctype: en_US.UTF-8
+        template: template0
+        state: present
+      become_user: postgres
+      tags: [database]
+
+    # Настройка доступа
+    - name: '7.7 - Настройка pg_hba.conf для удаленных подключений'
+      lineinfile:
+        path: /etc/postgresql/{{ postgres_version }}/main/pg_hba.conf
+        line: "host    {{ db_name }}    {{ db_user }}    0.0.0.0/0    md5"
+        insertafter: "^# IPv4 local connections"
+        state: present
+      notify: restart postgresql
+      tags: [configure]
+
+    - name: '7.8 - Настройка postgresql.conf для прослушивания всех интерфейсов'
+      lineinfile:
+        path: /etc/postgresql/{{ postgres_version }}/main/postgresql.conf
+        regexp: "^#listen_addresses"
+        line: "listen_addresses = '*'"
+        backrefs: yes
+      notify: restart postgresql
+      tags: [configure]
+
+    # Тестирование подключения
+    - name: '7.9 - Тестирование подключения к БД'
+      postgresql_query:
+        db: "{{ db_name }}"
+        query: "SELECT version();"
+        login_user: "{{ db_user }}"
+        login_password: "{{ db_password }}"
+      register: db_test
+      tags: [test]
+
+    - name: '7.10 - Информация о PostgreSQL'
+      debug:
+        msg: |
+          ===================================
+          🐘 POSTGRESQL УСТАНОВЛЕН
+          ===================================
+          📦 Версия: {{ postgres_version }}
+          💾 База данных: {{ db_name }}
+          👤 Пользователь: {{ db_user }}
+          🔑 Пароль: {{ db_password }}
+          🌐 Прослушивание: все интерфейсы
+          📝 Версия БД: {{ db_test.query_result[0]['version'] | default('N/A') }}
+          ===================================
+      tags: [info]
+
+  handlers:
+    - name: restart postgresql
+      service:
+        name: postgresql
+        state: restarted

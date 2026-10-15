@@ -1,0 +1,27 @@
+---
+- name: 'СЦЕНАРИЙ 10: Настройка sysctl'
+  hosts: localhost
+  connection: local
+  become: yes
+
+  tasks:
+    - name: 'Настройка параметров sysctl'
+      sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        state: present
+        reload: yes
+        sysctl_set: yes
+      loop:
+        - { name: 'net.core.somaxconn', value: '1024' }
+        - { name: 'vm.swappiness', value: '10' }
+        - { name: 'net.ipv4.tcp_tw_reuse', value: '1' }
+
+    - name: 'Проверка настроек'
+      command: sysctl net.core.somaxconn vm.swappiness net.ipv4.tcp_tw_reuse
+      register: sysctl_result
+      changed_when: false
+
+    - name: 'Текущие параметры'
+      debug:
+        var: sysctl_result.stdout_lines

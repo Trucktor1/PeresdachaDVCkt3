@@ -1,0 +1,53 @@
+---
+- name: 'СЦЕНАРИЙ 6: Настройка файрвола'
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: 'Проверка установки UFW'
+      apt:
+        name: ufw
+        state: present
+      register: ufw_install
+
+    - name: 'Разрешение SSH'
+      ufw:
+        rule: allow
+        port: ssh
+        proto: tcp
+      when: ufw_install is defined
+
+    - name: 'Разрешение HTTP'
+      ufw:
+        rule: allow
+        port: 80
+        proto: tcp
+      when: ufw_install is defined
+
+    - name: 'Разрешение HTTPS'
+      ufw:
+        rule: allow
+        port: 443
+        proto: tcp
+      when: ufw_install is defined
+
+    - name: 'Включение UFW (без автоматического подтверждения)'
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+      when: ufw_install is defined
+      ignore_errors: yes
+
+    - name: 'Статус UFW'
+      command: ufw status
+      register: ufw_status
+      changed_when: false
+      ignore_errors: yes
+
+    - name: 'Правила файрвола'
+      debug:
+        var: ufw_status.stdout_lines
+      when: ufw_status is defined

@@ -1,0 +1,186 @@
+---
+- name: 'СЦЕНАРИЙ 11: Установка и настройка Prometheus'
+  hosts: monitoring
+  become: yes
+
+  vars:
+    prometheus_version: "2.45.0"
+    node_exporter_version: "1.6.1"
+    prometheus_user: prometheus
+    prometheus_dir: /etc/prometheus
+    prometheus_data: /var/lib/prometheus
+
+  tasks:
+    # Создание пользователя
+    - name: '11.1 - Создание пользователя Prometheus'
+      user:
+        name: "{{ prometheus_user }}"
+        system: yes
+        shell: /bin/false
+        home: "{{ prometheus_data }}"
+        create_home: yes
+      tags: [user]
+
+    # Создание директорий
+    - name: '11.2 - Создание директорий'
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_user }}"
+        mode: '0755'
+      loop:
+        - "{{ prometheus_dir }}"
+        - "{{ prometheus_dir }}/rules"
+        - "{{ prometheus_dir }}/targets"
+        - "{{ prometheus_data }}"
+      tags: [setup]
+
+    # Скачивание Prometheus
+    - name: '11.3 - Скачивание Prometheus'
+      get_url:
+        url: "https://github.com/prometheus/prometheus/releases/download/v{{ prometheus_version }}/prometheus-{{ prometheus_version }}.linux-amd64.tar.gz"
+        dest: /tmp/prometheus.tar.gz
+        mode: '0644'
+      tags: [download]
+
+    - name: '11.4 - Распаковка Prometheus'
+      unarchive:
+        src: /tmp/prometheus.tar.gz
+        dest: /tmp/
+        remote_src: yes
+        creates: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64"
+      tags: [install]
+
+    # Установка бинарных файлов
+    - name: '11.5 - Установка бинарных файлов Prometheus'
+      copy:
+        src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/{{ item }}"
+        dest: "/usr/local/bin/{{ item }}"
+        mode: '0755'
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_user }}"
+        remote_src: yes
+      loop:
+        - prometheus
+        - promtool
+      tags: [install]
+
+    # Копирование конфигурации
+    - name: '11.6 - Копирование конфигурации Prometheus'
+      copy:
+        src: "/tmp/prometheus-{{ prometheus_version }}.linux-amd64/prometheus.yml"
+        dest: "{{ prometheus_dir }}/prometheus.yml"
+        owner: "{{ prometheus_user }}"
+        group: "{{ prometheus_user }}"
+        mode: '0644'
+        remote_src: yes
+      tags: [config]
+
+    # Создание systemd сервиса
+    - name: '11.7 - Создание systemd сервиса для Prometheus'
+      copy:
+        content: |
+          [Unit]
+          Description=Prometheus Monitoring System
+          Documentation=https://prometheus.io/docs/
+          After=network.target
+
+          [Service]
+          Type=simple
+          User={{ prometheus_user }}
+          Group={{ prometheus_user }}
+          ExecStart=/usr/local/bin/prometheus \
+            --config.file={{ prometheus_dir }}/prometheus.yml \
+            --storage.tsdb.path={{ prometheus_data }} \
+            --web.console.templates=/etc/prometheus/consoles \
+            --web.console.libraries=/etc/prometheus/console_libraries
+          Restart=always
+          RestartSec=10
+
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/prometheus.service
+        mode: '0644'
+      tags: [service]
+
+    # Установка node_exporter
+    - name: '11.8 - Установка node_exporter на все серверы'
+      hosts: all
+      become: yes
+      tasks:
+        - name: '11.8.1 - Скачивание node_exporter'
+          get_url:
+            url: "https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz"
+            dest: /tmp/node_exporter.tar.gz
+          tags: [node_exporter]
+
+        - name: '11.8.2 - Распаковка node_exporter'
+          unarchive:
+            src: /tmp/node_exporter.tar.gz
+            dest: /tmp/
+            remote_src: yes
+          tags: [node_exporter]
+
+        - name: '11.8.3 - Установка node_exporter'
+          copy:
+            src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+            dest: /usr/local/bin/node_exporter
+            mode: '0755'
+            remote_src: yes
+          tags: [node_exporter]
+
+        - name: '11.8.4 - Создание systemd сервиса для node_exporter'
+          copy:
+            content: |
+              [Unit]
+              Description=Node Exporter
+              After=network.target
+
+              [Service]
+              Type=simple
+              ExecStart=/usr/local/bin/node_exporter
+              Restart=always
+
+              [Install]
+              WantedBy=multi-user.target
+            dest: /etc/systemd/system/node_exporter.service
+          tags: [node_exporter]
+
+        - name: '11.8.5 - Запуск node_exporter'
+          systemd:
+            name: node_exporter
+            state: started
+            enabled: yes
+            daemon_reload: yes
+          tags: [node_exporter]
+
+    # Запуск Prometheus
+    - name: '11.9 - Запуск Prometheus'
+      systemd:
+        name: prometheus
+        state: started
+        enabled: yes
+        daemon_reload: yes
+      tags: [service]
+
+    # Проверка статуса
+    - name: '11.10 - Проверка статуса Prometheus'
+      command: systemctl status prometheus --no-pager
+      register: prometheus_status
+      changed_when: false
+      tags: [verify]
+
+    - name: '11.11 - Информация о установке'
+      debug:
+        msg: |
+          ===================================
+          📊 PROMETHEUS УСТАНОВЛЕН
+          ===================================
+          🔧 Prometheus: v{{ prometheus_version }}
+          📡 Node Exporter: v{{ node_exporter_version }}
+          🌐 Веб-интерфейс: http://{{ ansible_host }}:9090
+          📁 Данные: {{ prometheus_data }}
+          ⚙️  Конфиг: {{ prometheus_dir }}/prometheus.yml
+          ===================================
+      tags: [info]

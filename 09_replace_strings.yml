@@ -1,0 +1,28 @@
+---
+- name: 'СЦЕНАРИЙ 9: Замена строк в файлах'
+  hosts: localhost
+  connection: local
+  become: yes
+
+  tasks:
+    - name: 'Замена версии в index.html'
+      lineinfile:
+        path: /var/www/mysite/index.html
+        regexp: '^.*Nginx установлен.*$'
+        line: '              <h1>✅ Nginx установлен через Ansible (Обновлено: {{ ansible_date_time.date }})!</h1>'
+        backrefs: yes
+
+    - name: 'Добавление информации о версии Ansible'
+      lineinfile:
+        path: /var/www/mysite/index.html
+        line: '              <p>Версия Ansible: {{ ansible_version.full }}</p>'
+        insertafter: '<p>Время:'
+
+    - name: 'Просмотр изменений'
+      command: cat /var/www/mysite/index.html
+      register: file_content
+      changed_when: false
+
+    - name: 'Результат'
+      debug:
+        msg: "{{ file_content.stdout_lines }}"

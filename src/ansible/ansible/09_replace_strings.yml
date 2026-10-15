@@ -1,0 +1,92 @@
+---
+- name: 'СЦЕНАРИЙ 9: Замена строк в конфигурационных файлах'
+  hosts: webservers
+  become: yes
+
+  vars:
+    html_file: /var/www/mysite/index.html
+    replacements:
+      - { regex: 'Welcome to (.*) Website', replace: 'Welcome to \1 Web Server' }
+      - { regex: 'Server version:.*$', line: '  <p>Server version: 2.0.1</p>' }
+      - { regex: 'admin@', replace: 'devops@' }
+
+  tasks:
+    # Создание тестового файла
+    - name: '9.1 - Создание тестового HTML файла'
+      copy:
+        dest: "{{ html_file }}"
+        content: |
+          <html>
+          <head><title>Welcome to My Website</title></head>
+          <body>
+          <h1>Welcome to My Website</h1>
+          <p>Server version: 1.0.0</p>
+          <p>Maintained by: admin@example.com</p>
+          <p>Last update: 2023-01-01</p>
+          </body>
+          </html>
+        owner: www-data
+        group: www-data
+        mode: '0644'
+      tags: [create]
+
+    # Замена с помощью lineinfile
+    - name: '9.2 - Замена строки с версией'
+      lineinfile:
+        path: "{{ html_file }}"
+        regexp: '^.*Server version:.*$'
+        line: '  <p>Server version: 2.0.1 (Updated by Ansible)</p>'
+        backrefs: yes
+      tags: [lineinfile]
+
+    # Добавление строки, если её нет
+    - name: '9.3 - Добавление строки с датой деплоя'
+      lineinfile:
+        path: "{{ html_file }}"
+        line: '  <p>Deployed by Ansible: {{ ansible_date_time.date }}</p>'
+        insertafter: '</body>'
+      tags: [lineinfile]
+
+    # Массовая замена с помощью replace
+    - name: '9.4 - Массовая замена email адресов'
+      replace:
+        path: "{{ html_file }}"
+        regexp: "admin@"
+        replace: "devops@"
+      tags: [replace]
+
+    # Комплексная замена заголовка
+    - name: '9.5 - Замена заголовка страницы'
+      replace:
+        path: "{{ html_file }}"
+        regexp: 'Welcome to (.*) Website'
+        replace: 'Welcome to \1 Web Server (Managed by Ansible)'
+      tags: [replace]
+
+    # Удаление строк
+    - name: '9.6 - Удаление старых строк'
+      lineinfile:
+        path: "{{ html_file }}"
+        regexp: 'Last update:'
+        state: absent
+      tags: [cleanup]
+
+    # Просмотр результата
+    - name: '9.7 - Просмотр измененного файла'
+      command: cat {{ html_file }}
+      register: file_content
+      changed_when: false
+      tags: [verify]
+
+    - name: '9.8 - Результат замен'
+      debug:
+        msg: "{{ file_content.stdout_lines }}"
+      tags: [verify]
+
+    # Сохранение бэкапа оригиналов
+    - name: '9.9 - Создание бэкапа измененных файлов'
+      copy:
+        src: "{{ html_file }}"
+        dest: "{{ html_file }}.{{ ansible_date_time.epoch }}"
+        remote_src: yes
+      tags: [backup]

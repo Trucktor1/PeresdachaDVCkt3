@@ -1,0 +1,92 @@
+---
+- name: 'СЦЕНАРИЙ 1: Установка и настройка веб-сервера Nginx'
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: '1.1 - Обновление кэша APT'
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: '1.2 - Установка пакета Nginx'
+      apt:
+        name: nginx
+        state: present
+
+    - name: '1.3 - Создание директории для веб-сайта'
+      file:
+        path: /var/www/mysite
+        state: directory
+        owner: www-data
+        group: www-data
+        mode: '0755'
+
+    - name: '1.4 - Создание главной страницы'
+      copy:
+        content: |
+          <!DOCTYPE html>
+          <html lang="ru">
+          <head>
+              <meta charset="UTF-8">
+              <title>Автоматизация Ansible</title>
+              <style>
+                  body { font-family: Arial; text-align: center; margin-top: 50px; }
+                  h1 { color: #4CAF50; }
+              </style>
+          </head>
+          <body>
+              <h1>✅ Nginx установлен через Ansible!</h1>
+              <p>Сервер: {{ ansible_hostname }}</p>
+              <p>Время: {{ ansible_date_time.date }} {{ ansible_date_time.time }}</p>
+          </body>
+          </html>
+        dest: /var/www/mysite/index.html
+        owner: www-data
+        group: www-data
+        mode: '0644'
+
+    - name: '1.5 - Настройка виртуального хоста Nginx'
+      copy:
+        content: |
+          server {
+              listen 80;
+              server_name _;
+              root /var/www/mysite;
+              index index.html;
+
+              location / {
+                  try_files $uri $uri/ =404;
+              }
+          }
+        dest: /etc/nginx/sites-available/mysite
+        mode: '0644'
+      notify: restart nginx
+
+    - name: '1.6 - Включение сайта'
+      file:
+        src: /etc/nginx/sites-available/mysite
+        dest: /etc/nginx/sites-enabled/mysite
+        state: link
+      notify: restart nginx
+
+    - name: '1.7 - Отключение default сайта'
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+      ignore_errors: yes
+      notify: restart nginx
+
+    - name: '1.8 - Запуск Nginx и добавление в автозагрузку'
+      service:
+        name: nginx
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart nginx
+      service:
+        name: nginx
+        state: restarted

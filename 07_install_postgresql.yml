@@ -1,0 +1,39 @@
+---
+- name: 'СЦЕНАРИЙ 7: Установка PostgreSQL'
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: 'Установка PostgreSQL'
+      apt:
+        name:
+          - postgresql
+          - postgresql-contrib
+          - python3-psycopg2
+        state: present
+      register: pg_install
+
+    - name: 'Запуск PostgreSQL'
+      service:
+        name: postgresql
+        state: started
+        enabled: yes
+      when: pg_install is defined
+
+    - name: 'Создание базы данных'
+      postgresql_db:
+        name: testdb
+        state: present
+      become_user: postgres
+      ignore_errors: yes
+      register: db_create
+
+    - name: 'Информация'
+      debug:
+        msg: |
+          ✅ PostgreSQL установлен и запущен!
+          📦 База данных: testdb
+          👤 Пользователь: postgres
+      when: pg_install is defined

@@ -1,0 +1,80 @@
+---
+- name: 'СЦЕНАРИЙ 4: Резервное копирование конфигурационных файлов'
+  hosts: webservers
+  become: yes
+
+  vars:
+    backup_date: "{{ ansible_date_time.year }}{{ ansible_date_time.month }}{{ ansible_date_time.day }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}"
+    backup_dir: "/backup/configs/{{ backup_date }}"
+    config_files:
+      - { src: '/etc/nginx/nginx.conf', desc: 'Основной конфиг Nginx' }
+      - { src: '/etc/nginx/sites-available/default', desc: 'Виртуальный хост по умолчанию' }
+      - { src: '/etc/hosts', desc: 'Файл hosts' }
+      - { src: '/etc/fstab', desc: 'Таблица файловых систем' }
+      - { src: '/etc/ssh/sshd_config', desc: 'Конфиг SSH сервера' }
+
+  tasks:
+    # Создание директории для бэкапов
+    - name: '4.1 - Создание директории для бэкапов'
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: '0755'
+      tags: [setup]
+
+    # Копирование конфигурационных файлов
+    - name: '4.2 - Копирование конфигурационных файлов'
+      copy:
+        src: "{{ item.src }}"
+        dest: "{{ backup_dir }}/{{ item.src | basename }}.{{ backup_date }}"
+        remote_src: yes
+        backup: yes
+      loop: "{{ config_files }}"
+      register: copy_result
+      ignore_errors: yes
+      tags: [backup]
+
+    # Создание архива
+    - name: '4.3 - Создание архива с бэкапами'
+      archive:
+        path: "{{ backup_dir }}"
+        dest: "{{ backup_dir }}.tar.gz"
+        format: gz
+        remove: yes
+      tags: [archive]
+
+    # Список файлов в архиве
+    - name: '4.4 - Список файлов в архиве'
+      command: tar -tzf {{ backup_dir }}.tar.gz
+      register: archive_files
+      changed_when: false
+      tags: [info]
+
+    # Отправка уведомления (опционально)
+    - name: '4.5 - Вывод информации о бэкапе'
+      debug:
+        msg: |
+          ===================================
+          ✅ БЭКАП УСПЕШНО СОЗДАН
+          ===================================
+          📁 Директория: {{ backup_dir }}.tar.gz
+          📦 Размер: {{ (archive_files.stdout | length / 1024) | int }} KB
+          📄 Файлов: {{ config_files | length }}
+          ===================================
+      tags: [info]
+
+    # Очистка старых бэкапов (оставляем последние 7 дней)
+    - name: '4.6 - Очистка старых бэкапов (старше 7 дней)'
+      find:
+        paths: /backup/configs
+        patterns: "*.tar.gz"
+        age: 7d
+      register: old_backups
+
+    - name: '4.7 - Удаление старых бэкапов'
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_backups.files }}"
+      when: old_backups.files | length > 0
+      tags: [cleanup]

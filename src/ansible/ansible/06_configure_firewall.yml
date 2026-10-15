@@ -1,0 +1,65 @@
+---
+- name: 'СЦЕНАРИЙ 6: Настройка файрвола (UFW)'
+  hosts: all
+  become: yes
+
+  vars:
+    firewall_rules:
+      - { port: 22, proto: tcp, rule: limit, comment: "SSH с ограничением попыток" }
+      - { port: 80, proto: tcp, rule: allow, comment: "HTTP" }
+      - { port: 443, proto: tcp, rule: allow, comment: "HTTPS" }
+      - { port: 5432, proto: tcp, rule: allow, from: '10.0.0.0/8', comment: "PostgreSQL для внутренней сети" }
+      - { port: 9100, proto: tcp, rule: allow, from: 'monitor.example.com', comment: "Prometheus node exporter" }
+
+  tasks:
+    # Установка UFW
+    - name: '6.1 - Установка UFW'
+      apt:
+        name: ufw
+        state: present
+      tags: [install]
+
+    # Сброс правил (опционально)
+    - name: '6.2 - Сброс правил UFW (для чистой конфигурации)'
+      ufw:
+        state: reset
+      when: reset_firewall | default(false)
+      tags: [reset]
+
+    # Применение правил
+    - name: '6.3 - Применение правил файрвола'
+      ufw:
+        rule: "{{ item.rule }}"
+        port: "{{ item.port }}"
+        proto: "{{ item.proto }}"
+        from_ip: "{{ item.from | default(omit) }}"
+        comment: "{{ item.comment }}"
+      loop: "{{ firewall_rules }}"
+      tags: [rules]
+
+    # Включение файрвола
+    - name: '6.4 - Включение UFW с политикой deny по умолчанию'
+      ufw:
+        state: enabled
+        policy: deny
+        direction: incoming
+      tags: [enable]
+
+    # Проверка статуса
+    - name: '6.5 - Получение статуса файрвола'
+      command: ufw status numbered
+      register: ufw_status
+      changed_when: false
+      tags: [status]
+
+    # Вывод правил
+    - name: '6.6 - Текущие правила файрвола'
+      debug:
+        msg: "{{ ufw_status.stdout_lines }}"
+      tags: [info]
+
+    # Логирование (опционально)
+    - name: '6.7 - Включение логирования UFW'
+      ufw:
+        logging: 'on'
+      tags: [logging]

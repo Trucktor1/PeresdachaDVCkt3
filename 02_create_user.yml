@@ -1,0 +1,21 @@
+---
+- name: 'СЦЕНАРИЙ 2: Создание пользователя'
+  hosts: localhost
+  connection: local
+  become: yes
+
+  tasks:
+    - name: 'Создание пользователя newadmin'
+      user:
+        name: newadmin
+        password: "{{ '123' | password_hash('sha512') }}"
+        groups: sudo
+        append: yes
+        shell: /bin/bash
+        home: /home/newadmin
+        create_home: yes
+        state: present
+
+    - name: 'Информация о пользователе'
+      debug:
+        msg: "✅ Пользователь newadmin создан с паролем: 123"

@@ -1,0 +1,45 @@
+---
+- name: 'СЦЕНАРИЙ 4: Резервное копирование'
+  hosts: localhost
+  connection: local
+  become: yes
+  gather_facts: yes
+
+  vars:
+    backup_date: "{{ ansible_date_time.year }}{{ ansible_date_time.month }}{{ ansible_date_time.day }}_{{ ansible_date_time.hour }}{{ ansible_date_time.minute }}{{ ansible_date_time.second }}"
+    backup_dir: "/tmp/backup_configs_{{ backup_date }}"
+
+  tasks:
+    - name: 'Создание директории для бэкапа'
+      file:
+        path: "{{ backup_dir }}"
+        state: directory
+        mode: '0755'
+
+    - name: 'Копирование конфигов Nginx (если существуют)'
+      copy:
+        src: "{{ item }}"
+        dest: "{{ backup_dir }}/"
+        remote_src: yes
+      loop:
+        - /etc/nginx/nginx.conf
+        - /etc/nginx/sites-available/mysite
+      ignore_errors: yes
+      register: copy_result
+
+    - name: 'Создание архива'
+      archive:
+        path: "{{ backup_dir }}"
+        dest: "{{ backup_dir }}.tar.gz"
+        format: gz
+        remove: yes
+      when: copy_result is defined
+
+    - name: 'Информация о бэкапе'
+      debug:
+        msg: |
+          ✅ Бэкап успешно создан!
+          📁 Архив: {{ backup_dir }}.tar.gz
+          📄 Скопировано файлов: {{ copy_result.results | selectattr('changed','equalto',true) | list | length }}
+          💾 Размер: {{ (lookup('file', backup_dir + '.tar.gz') | length / 1024) | round(2) }} KB
+      when: copy_result is defined

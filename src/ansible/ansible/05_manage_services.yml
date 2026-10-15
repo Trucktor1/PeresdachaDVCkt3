@@ -1,0 +1,65 @@
+---
+- name: 'СЦЕНАРИЙ 5: Управление системными сервисами'
+  hosts: webservers
+  become: yes
+
+  vars_prompt:
+    - name: service_action
+      prompt: "Выберите действие (start/stop/restart/reload/status)"
+      private: no
+      default: "status"
+
+    - name: service_name
+      prompt: "Введите имя сервиса"
+      private: no
+      default: "nginx"
+
+  tasks:
+    # Проверка существования сервиса
+    - name: '5.1 - Проверка существования сервиса'
+      command: systemctl list-unit-files {{ service_name }}.service
+      register: service_exists
+      changed_when: false
+      failed_when: false
+      tags: [check]
+
+    - name: '5.2 - Остановка, если сервис не существует'
+      fail:
+        msg: "❌ Сервис {{ service_name }} не найден!"
+      when: service_exists.rc != 0
+      tags: [check]
+
+    # Управление сервисом
+    - name: '5.3 - Управление сервисом ({{ service_action }})'
+      service:
+        name: "{{ service_name }}"
+        state: "{{ service_action if service_action != 'status' else omit }}"
+      register: service_result
+      when: service_action != 'status'
+      tags: [manage]
+
+    # Получение статуса
+    - name: '5.4 - Получение статуса сервиса'
+      command: systemctl status {{ service_name }} --no-pager
+      register: service_status
+      changed_when: false
+      tags: [status]
+
+    # Информация о выполнении
+    - name: '5.5 - Результат выполнения'
+      debug:
+        msg: |
+          ===================================
+          📊 УПРАВЛЕНИЕ СЕРВИСОМ
+          ===================================
+          🔧 Сервис: {{ service_name }}
+          🎯 Действие: {{ service_action }}
+          📝 Статус:
+          {{ service_status.stdout_lines[:5] | join('\n') }}
+          ===================================
+      tags: [info]
+
+  handlers:
+    - name: check service
+      command: systemctl is-active {{ service_name }}
+      register: check_result

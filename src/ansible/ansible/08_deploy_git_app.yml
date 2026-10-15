@@ -1,0 +1,91 @@
+---
+- name: 'СЦЕНАРИЙ 8: Деплой приложения из Git репозитория'
+  hosts: webservers
+  become: yes
+
+  vars:
+    repo_url: "https://github.com/your-username/your-app.git"
+    repo_branch: main
+    deploy_path: /var/www/myapp
+    app_user: www-data
+
+  tasks:
+    # Установка Git
+    - name: '8.1 - Установка Git'
+      apt:
+        name: git
+        state: present
+      tags: [install]
+
+    # Создание директории для деплоя
+    - name: '8.2 - Создание директории деплоя'
+      file:
+        path: "{{ deploy_path }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+      tags: [setup]
+
+    # Клонирование/обновление репозитория
+    - name: '8.3 - Клонирование или обновление репозитория'
+      git:
+        repo: "{{ repo_url }}"
+        dest: "{{ deploy_path }}"
+        version: "{{ repo_branch }}"
+        force: yes
+        depth: 1
+        accept_hostkey: yes
+      register: git_result
+      tags: [deploy]
+
+    # Установка зависимостей (если есть requirements.txt)
+    - name: '8.4 - Установка Python зависимостей'
+      pip:
+        requirements: "{{ deploy_path }}/requirements.txt"
+        state: present
+      when: git_result.changed and deploy_path + '/requirements.txt' is exists
+      tags: [dependencies]
+
+    # Копирование .env файла (если есть)
+    - name: '8.5 - Копирование конфигурации окружения'
+      copy:
+        src: files/.env.production
+        dest: "{{ deploy_path }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0640'
+      when: not git_result.changed
+      tags: [config]
+
+    # Настройка прав
+    - name: '8.6 - Установка корректных прав'
+      file:
+        path: "{{ deploy_path }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        recurse: yes
+        mode: '0755'
+      tags: [permissions]
+
+    # Перезапуск приложения (если нужно)
+    - name: '8.7 - Перезапуск сервиса приложения'
+      service:
+        name: myapp
+        state: restarted
+      when: git_result.changed
+      tags: [restart]
+
+    - name: '8.8 - Информация о деплое'
+      debug:
+        msg: |
+          ===================================
+          🚀 ДЕПЛОЙ ЗАВЕРШЕН
+          ===================================
+          📦 Репозиторий: {{ repo_url }}
+          🌿 Ветка: {{ repo_branch }}
+          📁 Путь: {{ deploy_path }}
+          🔄 Изменения: {{ 'Да' if git_result.changed else 'Нет' }}
+          📊 Коммит: {{ git_result.after | default('N/A')[:8] }}
+          ===================================
+      tags: [info]

@@ -1,0 +1,22 @@
+---
+- name: 'СЦЕНАРИЙ 8: Деплой из Git'
+  hosts: localhost
+  connection: local
+  become: yes
+
+  tasks:
+    - name: 'Установка Git'
+      apt:
+        name: git
+        state: present
+
+    - name: 'Клонирование тестового репозитория'
+      git:
+        repo: 'https://github.com/nginxinc/NGINX-Demos.git'
+        dest: /tmp/nginx-demo
+        depth: 1
+        force: yes
+
+    - name: 'Информация о деплое'
+      debug:
+        msg: "✅ Репозиторий склонирован в /tmp/nginx-demo"

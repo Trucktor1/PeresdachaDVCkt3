@@ -1,0 +1,73 @@
+---
+- name: 'СЦЕНАРИЙ 2: Создание пользователей и управление правами'
+  hosts: all
+  become: yes
+
+  vars:
+    users:
+      - name: newadmin
+        password: '123'  # В продакшене используйте хеши!
+        groups: [sudo, adm]
+        shell: /bin/bash
+        ssh_key: "{{ lookup('file', '~/.ssh/id_rsa.pub', errors='ignore') }}"
+
+      - name: deployer
+        password: 'deploy123'
+        groups: [www-data]
+        shell: /bin/bash
+
+  tasks:
+    # Создание пользователей
+    - name: '2.1 - Создание пользователей'
+      user:
+        name: "{{ item.name }}"
+        password: "{{ item.password | password_hash('sha512') }}"
+        groups: "{{ item.groups | join(',') }}"
+        append: yes
+        shell: "{{ item.shell }}"
+        home: "/home/{{ item.name }}"
+        create_home: yes
+        state: present
+      loop: "{{ users }}"
+      tags: [create]
+
+    # Создание .ssh директории
+    - name: '2.2 - Создание SSH директории для пользователей'
+      file:
+        path: "/home/{{ item.name }}/.ssh"
+        state: directory
+        owner: "{{ item.name }}"
+        group: "{{ item.name }}"
+        mode: '0700'
+      loop: "{{ users }}"
+      tags: [ssh]
+
+    # Добавление SSH ключей
+    - name: '2.3 - Добавление SSH публичных ключей'
+      authorized_key:
+        user: "{{ item.name }}"
+        key: "{{ item.ssh_key }}"
+        state: present
+      loop: "{{ users }}"
+      when: item.ssh_key is defined and item.ssh_key != ''
+      tags: [ssh]
+
+    # Настройка sudo без пароля для группы
+    - name: '2.4 - Настройка sudo без пароля для группы sudo'
+      copy:
+        content: |
+          %sudo ALL=(ALL) NOPASSWD: ALL
+        dest: /etc/sudoers.d/sudo_nopasswd
+        mode: '0440'
+        validate: 'visudo -cf %s'
+      tags: [sudo]
+
+    # Информация о созданных пользователях
+    - name: '2.5 - Вывод информации о пользователях'
+      debug:
+        msg: |
+          Пользователь {{ item.name }} создан
+          Домашняя директория: /home/{{ item.name }}
+          Пароль: {{ item.password }}
+      loop: "{{ users }}"
+      tags: [info]
